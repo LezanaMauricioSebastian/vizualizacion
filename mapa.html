@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Mapa de Propiedades</title>
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAQayartArb6MwoMF9-sDROHeXZc-akVFU&callback=initMap" async defer></script>
+  <script>
+    function initMap() {
+      var map = new google.maps.Map(document.getElementById('map'), {
+        zoom: 12,
+        center: { lat: -27.455184, lng: -58.987847 } // Centro en Resistencia
+      });
+      var jsonURL = "https://storage.googleapis.com/argenprop_departamentos/detalles_propiedades.json";
+      // Cargar datos desde JSON
+      fetch(jsonURL)
+        .then(response => response.json())
+        .then(locations => {
+          locations.forEach(function(loc) {
+            // Convertir a número para evitar errores
+            var lat = parseFloat(loc.Latitud);
+            var lng = parseFloat(loc.Longitud);
+
+            if (!isNaN(lat) && !isNaN(lng)) {  // Solo agregar si los valores son válidos
+              var marker = new google.maps.Marker({
+                position: { lat: lat, lng: lng },
+                map: map
+              });
+
+              // Crear ventana de información con detalles
+              var infoWindow = new google.maps.InfoWindow({
+                content: `
+                  <div>
+                    <h3>${loc.Título}</h3>
+                    <p><strong>Dirección:</strong> ${loc.Dirección}</p>
+                    <p><strong>Precio:</strong> ${loc.Precio}</p>
+                    <p><strong>Expensas:</strong> ${loc.Expensas}</p>
+                    <p><strong>Ambientes:</strong> ${loc.Ambientes}</p>
+                    <p><strong>Descripción:</strong> ${loc.Descripcion}</p>
+                    <a href="${loc.Link}" target="_blank">Ver más detalles</a>
+                  </div>
+                `
+              });
+
+              // Mostrar información al hacer clic en el marcador
+              marker.addListener("click", function() {
+                infoWindow.open(map, marker);
+              });
+            } else {
+              console.warn(`⚠️ Coordenadas inválidas: ${loc.Latitud}, ${loc.Longitud}`);
+            }
+          });
+        })
+        .catch(error => console.error("Error cargando las ubicaciones:", error));
+    }
+</script>   
+</head>
+<body>
+  <h2>📍 Mapa de Propiedades</h2>
+  <div id="map" style="height: 500px; width: 100%;"></div>
+</body>
+</html>
