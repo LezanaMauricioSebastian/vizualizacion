@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Mapa de Propiedades y Pavimento</title>
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAQayartArb6MwoMF9-sDROHeXZc-akVFU"></script>
+  <script src="https://unpkg.com/@googlemaps/markerclusterer/dist/index.min.js"></script>
+  <style>
+    #map { height: 600px; width: 100%; }
+    .legend { position: absolute; bottom: 30px; left: 20px; background: white; padding: 10px; border: 1px solid #ccc; z-index: 1000; }
+    .legend div { margin: 5px 0; }
+  </style>
+</head>
+<body>
+  <h1>Mapa de Propiedades y Pavimento</h1>
+  <div id="map"></div>
+  <div class="legend">
+    <h3>Leyenda</h3>
+    <p><img src="https://maps.google.com/mapfiles/ms/icons/red-dot.png"> Venta</p>
+    <p><img src="https://maps.google.com/mapfiles/ms/icons/green-dot.png"> Alquiler</p>
+    <div><span style="background: red; width: 10px; height: 10px; display: inline-block;"></span> Más pavimento</div>
+    <div><span style="background: blue; width: 10px; height: 10px; display: inline-block;"></span> Menos pavimento</div>
+    <div><span style="background: gray; width: 10px; height: 10px; display: inline-block;"></span> Sin datos</div>
+  </div>
+
+  <script>
+    var map;
+    var markers = [];
+    var jsonProperties = "https://storage.googleapis.com/argenprop_departamentos/detalles_propiedades.json";
+    var jsonPavement = "https://storage.googleapis.com/argenprop_departamentos/geo_data/Ejes_resumen_4326.geojson";
+
+    function initMap() {
+      map = new google.maps.Map(document.getElementById('map'), {
+        zoom: 12,
+        center: { lat: -27.455184, lng: -58.987847 } // Centro en Resistencia
+      });
+
+      // Cargar y mostrar propiedades
+      fetch(jsonProperties)
+        .then(response => response.json())
+        .then(data => addMarkers(data))
+        .catch(error => console.error("Error cargando propiedades:", error));
+
+      // Cargar y mostrar datos de pavimento
+      fetch(jsonPavement)
+        .then(response => response.json())
+        .then(data => addPolygons(data))
+        .catch(error => console.error("Error cargando datos de pavimento:", error));
+    }
+
+    // Función para agregar marcadores de propiedades
+    function addMarkers(locations) {
+      locations.forEach(loc => {
+        var lat = parseFloat(loc.Latitud);
+        var lng = parseFloat(loc.Longitud);
+
+        if (isNaN(lat) || isNaN(lng)) {
+          console.warn(`Coordenadas inválidas: ${loc.Latitud}, ${loc.Longitud}`);
+          return; // Saltar esta propiedad
+        }
+
+        var iconUrl = loc['Tipo de transaccion'] === 'Venta' 
+          ? 'https://maps.google.com/mapfiles/ms/icons/red-dot.png' 
+          : 'https://maps.google.com/mapfiles/ms/icons/green-dot.png';
+
+        var marker = new google.maps.Marker({
+          position: { lat: lat, lng: lng },
+          icon: { url: iconUrl, size: new google.maps.Size(32, 32), anchor: new google.maps.Point(16, 32) }
+        });
+
+        var infoWindow = new google.maps.InfoWindow({
+          content: `
+            <div style="font-family: Arial, sans-serif;">
+              <h3>${loc.Título}</h3>
+              <p><strong>Dirección:</strong> ${loc.Dirección}</p>
+              <p><strong>Tipo de transacción:</strong> ${loc['Tipo de transaccion']}</p>
+              <p><strong>Precio:</strong> ${loc.Precio}</p>
+              <a href="${loc.Link}" target="_blank">Ver más detalles</a>
+            </div>
+          `
+        });
+
+        marker.addListener("click", () => infoWindow.open(map, marker));
+        markers.push(marker);
+      });
+
+      // Agrupar marcadores
+      new markerClusterer.MarkerClusterer({ map, markers });
+    }
+
+    // Función para agregar polígonos de pavimento
+    function addPolygons(data) {
+      data.features.forEach(function(feature, index) {
+          var coordinates = feature.geometry.coordinates; // MultiPolygon coordinates
+          var properties = feature.properties; // { no_pav_tot, sindato_to, pav_tot }
+  
+          console.log(`Polígono ${index}:`, coordinates);
+  
+          coordinates.forEach((polygonData, polyIndex) => {
+              console.log(`Polígono ${polyIndex}:`, polygonData);
+  
+              // Ensure correct level of nesting
+              if (Array.isArray(polygonData) && Array.isArray(polygonData[0])) {
+                  polygonData = polygonData[0]; // Flatten if needed
+              }
+  
+              var polygonPaths = polygonData.map(coord => ({ lat: coord[1], lng: coord[0] }));
+              
+              if (polygonPaths.length > 0) {
+                  var polygon = new google.maps.Polygon({
+                      paths: polygonPaths,
+                      strokeColor: getColor(properties),
+                      strokeOpacity: 0.8,
+                      strokeWeight: 2,
+                      fillColor: getColor(properties),
+                      fillOpacity: 0.35
+                  });
+  
+                  polygon.setMap(map);
+  
+                  // InfoWindow for additional data
+                  var infoWindow = new google.maps.InfoWindow({
+                      content: `
+                          <div style="font-family: Arial, sans-serif;">
+                              <h3>Datos de Pavimento</h3>
+                              <p><strong>Pavimento:</strong> ${(properties.pav_tot * 100).toFixed(2)}%</p>
+                              <p><strong>Sin pavimento:</strong> ${(properties.no_pav_tot * 100).toFixed(2)}%</p>
+                              <p><strong>Sin datos:</strong> ${(properties.sindato_to * 100).toFixed(2)}%</p>
+                          </div>
+                      `
+                  });
+  
+                  // Show InfoWindow when polygon is clicked
+                  polygon.addListener('click', function(event) {
+                      infoWindow.setPosition(event.latLng);
+                      infoWindow.open(map);
+                  });
+              } else {
+                  console.error(`No se pudo construir el polígono ${polyIndex}, las coordenadas están vacías.`);
+              }
+          });
+      });
+  }
+  function getColor(properties) {
+    if (properties.pav_tot > properties.no_pav_tot && properties.pav_tot > properties.sindato_to) {
+      return 'red'; // Más pavimento
+    } else if (properties.no_pav_tot > properties.pav_tot && properties.no_pav_tot > properties.sindato_to) {
+      return 'blue'; // Menos pavimento
+    } else {
+      return 'gray'; // Sin datos
+    }
+  }
+    window.onload = initMap;
+  </script>
+</body>
+</html>
