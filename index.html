@@ -3,59 +3,172 @@
 <head>
   <meta charset="UTF-8">
   <title>Mapa de Propiedades</title>
-  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAQayartArb6MwoMF9-sDROHeXZc-akVFU&callback=initMap" async defer></script>
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAQayartArb6MwoMF9-sDROHeXZc-akVFU"></script>
+  <script src="https://unpkg.com/@googlemaps/markerclusterer/dist/index.min.js"></script>
+  <style>
+    #map {
+      height: 500px;
+      width: 100%;
+      position: relative;
+    }
+    .filter-container {
+      margin: 20px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    #loading {
+      text-align: center;
+      margin: 20px;
+      font-size: 18px;
+    }
+    .legend {
+      position: absolute;
+      top: 120px;
+      left: 20px;
+      background: white;
+      padding: 10px;
+      border: 1px solid #ccc;
+      z-index: 1000;
+    }
+  </style>
+</head>
+<body>
+  <h2>📍 Mapa de Propiedades</h2>
+  <!-- Loading Indicator -->
+  <div id="loading">Cargando propiedades...</div>
+
+  <!-- Filter and Search Container -->
+  <div class="filter-container">
+    <label for="filter">Filtrar por tipo de transacción: </label>
+    <select id="filter" onchange="filterMarkers(this.value)">
+      <option value="Todos">Todos</option>
+      <option value="Venta">Venta</option>
+      <option value="Alquiler">Alquiler</option>
+    </select>
+    <button onclick="filterMarkers('Todos')" style="margin-left: 10px;">Resetear Filtro</button>
+    <input id="search-box" type="text" placeholder="Buscar dirección..." style="margin-left: 20px;">
+    <button onclick="searchAddress()">Buscar</button>
+  </div>
+
+  <!-- Map Container -->
+  <div id="map"></div>
+
+  <!-- Legend -->
+  <div class="legend">
+    <p><strong>Leyenda:</strong></p>
+    <p><img src="https://maps.google.com/mapfiles/ms/icons/red-dot.png" style="vertical-align: middle;"> Venta</p>
+    <p><img src="https://maps.google.com/mapfiles/ms/icons/green-dot.png" style="vertical-align: middle;"> Alquiler</p>
+  </div>
+
   <script>
+    var map;
+    var markers = []; // Array para almacenar los marcadores
+    var markerCluster; // Para agrupar marcadores
+    var jsonURL = "https://storage.googleapis.com/argenprop_departamentos/detalles_propiedades.json";
+
+    // Initialize the map when the page loads
+    window.onload = function() {
+      initMap();
+    };
+
     function initMap() {
-      var map = new google.maps.Map(document.getElementById('map'), {
+      map = new google.maps.Map(document.getElementById('map'), {
         zoom: 12,
         center: { lat: -27.455184, lng: -58.987847 } // Centro en Resistencia
       });
-      var jsonURL = "https://storage.googleapis.com/argenprop_departamentos/detalles_propiedades.json";
+
       // Cargar datos desde JSON
       fetch(jsonURL)
         .then(response => response.json())
         .then(locations => {
-          locations.forEach(function(loc) {
-            // Convertir a número para evitar errores
-            var lat = parseFloat(loc.Latitud);
-            var lng = parseFloat(loc.Longitud);
-
-            if (!isNaN(lat) && !isNaN(lng)) {  // Solo agregar si los valores son válidos
-              var marker = new google.maps.Marker({
-                position: { lat: lat, lng: lng },
-                map: map
-              });
-
-              // Crear ventana de información con detalles
-              var infoWindow = new google.maps.InfoWindow({
-                content: `
-                  <div>
-                    <h3>${loc.Título}</h3>
-                    <p><strong>Dirección:</strong> ${loc.Dirección}</p>
-                    <p><strong>Precio:</strong> ${loc.Precio}</p>
-                    <p><strong>Expensas:</strong> ${loc.Expensas}</p>
-                    <p><strong>Ambientes:</strong> ${loc.Ambientes}</p>
-                    <p><strong>Descripción:</strong> ${loc.Descripcion}</p>
-                    <a href="${loc.Link}" target="_blank">Ver más detalles</a>
-                  </div>
-                `
-              });
-
-              // Mostrar información al hacer clic en el marcador
-              marker.addListener("click", function() {
-                infoWindow.open(map, marker);
-              });
-            } else {
-              console.warn(`⚠️ Coordenadas inválidas: ${loc.Latitud}, ${loc.Longitud}`);
-            }
-          });
+          addMarkers(locations); // Agregar todos los marcadores
+          document.getElementById('loading').style.display = 'none'; // Ocultar indicador de carga
         })
-        .catch(error => console.error("Error cargando las ubicaciones:", error));
+        .catch(error => {
+          console.error("Error cargando las ubicaciones:", error);
+          alert('Hubo un error al cargar las propiedades.');
+          document.getElementById('loading').style.display = 'none'; // Ocultar indicador de carga incluso si hay un error
+        });
     }
-</script>   
-</head>
-<body>
-  <h2>📍 Mapa de Propiedades</h2>
-  <div id="map" style="height: 500px; width: 100%;"></div>
+
+    // Función para agregar los marcadores al mapa
+    function addMarkers(locations) {
+      markerCluster = new markerClusterer.MarkerClusterer({ map });
+
+      locations.forEach(function(loc) {
+        var lat = parseFloat(loc.Latitud);
+        var lng = parseFloat(loc.Longitud);
+
+        if (isNaN(lat) || isNaN(lng)) {
+          console.warn(`⚠️ Coordenadas inválidas: ${loc.Latitud}, ${loc.Longitud}`);
+          return; // Saltar esta ubicación
+        }
+
+        var iconUrl = loc['Tipo de transaccion'] === 'Venta' 
+          ? 'https://maps.google.com/mapfiles/ms/icons/red-dot.png' 
+          : 'https://maps.google.com/mapfiles/ms/icons/green-dot.png';
+
+        var marker = new google.maps.Marker({
+          position: { lat: lat, lng: lng },
+          icon: {
+            url: iconUrl, // Ícono personalizado basado en el tipo de transacción
+            size: new google.maps.Size(32, 32),
+            anchor: new google.maps.Point(16, 32)
+          }
+        });
+
+        var infoWindow = new google.maps.InfoWindow({
+          content: `
+            <div style="font-family: Arial, sans-serif;">
+              <h3 style="margin: 0; color: #007BFF;">${loc.Título}</h3>
+              <p><strong>Dirección:</strong> ${loc.Dirección}</p>
+              <p><strong>Tipo de transacción:</strong> ${loc['Tipo de transaccion']}</p>
+              <p><strong>Precio:</strong> ${loc.Precio}</p>
+              <p><strong>Expensas:</strong> ${loc.Expensas}</p>
+              <p><strong>Ambientes:</strong> ${loc.Ambientes}</p>
+              <p><strong>Descripción:</strong> ${loc.Descripcion}</p>
+              <a href="${loc.Link}" target="_blank" style="color: #007BFF; text-decoration: none;">Ver más detalles</a>
+            </div>
+          `
+        });
+
+        marker.addListener("click", function() {
+          infoWindow.open(map, marker);
+        });
+
+        markers.push({ marker, transactionType: loc['Tipo de transaccion'] });
+        markerCluster.addMarker(marker);
+      });
+    }
+
+    // Filtrar las propiedades en función del tipo de transacción
+    function filterMarkers(transactionType) {
+      markers.forEach(function(item) {
+        item.marker.setMap(null); // Eliminar todos los marcadores actuales
+      });
+
+      markers.filter(function(item) {
+        return item.transactionType === transactionType || transactionType === 'Todos';
+      }).forEach(function(item) {
+        item.marker.setMap(map); // Volver a agregar los marcadores filtrados
+      });
+    }
+
+    // Buscar dirección
+    function searchAddress() {
+      var geocoder = new google.maps.Geocoder();
+      var address = document.getElementById('search-box').value;
+
+      geocoder.geocode({ 'address': address }, function(results, status) {
+        if (status === 'OK') {
+          map.setCenter(results[0].geometry.location);
+          map.setZoom(15); // Acercar a la ubicación buscada
+        } else {
+          alert('No se pudo encontrar la dirección: ' + status);
+        }
+      });
+    }
+  </script>
 </body>
 </html>
