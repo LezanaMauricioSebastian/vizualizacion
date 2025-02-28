@@ -2,158 +2,261 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Mapa de Propiedades y Pavimento</title>
+  <title>Mapa de Propiedades y Pavimento por Año</title>
   <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAQayartArb6MwoMF9-sDROHeXZc-akVFU"></script>
   <script src="https://unpkg.com/@googlemaps/markerclusterer/dist/index.min.js"></script>
   <style>
-    #map { height: 600px; width: 100%; }
-    .legend { position: absolute; bottom: 30px; left: 20px; background: white; padding: 10px; border: 1px solid #ccc; z-index: 1000; }
-    .legend div { margin: 5px 0; }
+    #map {
+      height: 500px;
+      width: 100%;
+      position: relative;
+    }
+    .filter-container {
+      margin: 20px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    #loading {
+      text-align: center;
+      margin: 20px;
+      font-size: 18px;
+    }
+    .legend {
+      position: absolute;
+      top: 120px;
+      left: 20px;
+      background: white;
+      padding: 10px;
+      border: 1px solid #ccc;
+      z-index: 1000;
+    }
+    .layer-control {
+      position: absolute;
+      background: white;
+      padding: 10px;
+      border: 1px solid #ccc;
+      z-index: 1000;
+      top: 20px;
+      right: 20px;
+    }
   </style>
 </head>
 <body>
-  <h1>Mapa de Propiedades y Pavimento</h1>
+  <h2>📍 Mapa de Propiedades y Pavimento</h2>
+
+  <!-- Loading Indicator -->
+  <div id="loading">Cargando propiedades...</div>
+
+  <!-- Filter and Search Container -->
+  <div class="filter-container">
+    <label for="filter">Filtrar por tipo de transacción: </label>
+    <select id="filter" onchange="filterMarkers(this.value)">
+      <option value="Todos">Todos</option>
+      <option value="Venta">Venta</option>
+      <option value="Alquiler">Alquiler</option>
+    </select>
+    <button onclick="resetFilter()" style="margin-left: 10px;">Resetear Filtro</button>
+    <input id="search-box" type="text" placeholder="Buscar dirección..." style="margin-left: 20px;">
+    <button onclick="searchAddress()">Buscar</button>
+  </div>
+
+  <!-- Map Container -->
   <div id="map"></div>
+
+  <!-- Legend -->
   <div class="legend">
-    <h3>Leyenda</h3>
-    <p><img src="https://maps.google.com/mapfiles/ms/icons/red-dot.png"> Venta</p>
-    <p><img src="https://maps.google.com/mapfiles/ms/icons/green-dot.png"> Alquiler</p>
-    <div><span style="background: red; width: 10px; height: 10px; display: inline-block;"></span> Más pavimento</div>
-    <div><span style="background: blue; width: 10px; height: 10px; display: inline-block;"></span> Menos pavimento</div>
-    <div><span style="background: gray; width: 10px; height: 10px; display: inline-block;"></span> Sin datos</div>
+    <p><strong>Leyenda:</strong></p>
+    <p><img src="https://maps.google.com/mapfiles/ms/icons/red-dot.png" style="vertical-align: middle;"> Venta</p>
+    <p><img src="https://maps.google.com/mapfiles/ms/icons/green-dot.png" style="vertical-align: middle;"> Alquiler</p>
+    <p><span style="background: red; width: 10px; height: 10px; display: inline-block;"></span> Más pavimento</p>
+    <p><span style="background: blue; width: 10px; height: 10px; display: inline-block;"></span> Menos pavimento</p>
+    <p><span style="background: gray; width: 10px; height: 10px; display: inline-block;"></span> Sin datos</p>
+  </div>
+
+  <!-- Layer Control -->
+  <div class="layer-control">
+    <h3>Capas por Año</h3>
+    <label><input type="radio" name="year" value="year_15" checked> 2015</label><br>
+    <label><input type="radio" name="year" value="year_19"> 2019</label><br>
+    <label><input type="radio" name="year" value="year_24"> 2024</label>
   </div>
 
   <script>
     var map;
     var markers = [];
-    var jsonProperties = "https://storage.googleapis.com/argenprop_departamentos/detalles_propiedades.json";
+    var markerCluster;
+    var layers = {};
     var jsonPavement = "https://storage.googleapis.com/argenprop_departamentos/geo_data/Ejes_resumen_4326.geojson";
+    var jsonURL = "https://storage.googleapis.com/argenprop_departamentos/detalles_propiedades.json";
+    var infoWindow;
+
+    window.onload = function() {
+      initMap();
+    };
 
     function initMap() {
       map = new google.maps.Map(document.getElementById('map'), {
         zoom: 12,
-        center: { lat: -27.455184, lng: -58.987847 } // Centro en Resistencia
+        center: { lat: -27.455184, lng: -58.987847 }
       });
 
-      // Cargar y mostrar propiedades
-      fetch(jsonProperties)
-        .then(response => response.json())
-        .then(data => addMarkers(data))
-        .catch(error => console.error("Error cargando propiedades:", error));
+      infoWindow = new google.maps.InfoWindow();
 
-      // Cargar y mostrar datos de pavimento
-      fetch(jsonPavement)
+      fetch(jsonURL)
         .then(response => response.json())
-        .then(data => addPolygons(data))
-        .catch(error => console.error("Error cargando datos de pavimento:", error));
+        .then(locations => {
+          addMarkers(locations);
+          document.getElementById('loading').style.display = 'none';
+        })
+        .catch(error => {
+          console.error("Error cargando las ubicaciones:", error);
+          alert('Hubo un error al cargar las propiedades.');
+          document.getElementById('loading').style.display = 'none';
+        });
+
+      fetch(jsonPavement)
+        .then(res => res.json())
+        .then(data => addLayers(data))
+        .catch(err => console.error("Error cargando datos:", err));
+
+      document.querySelectorAll('input[name="year"]').forEach(input => 
+        input.addEventListener('change', toggleLayer)
+      );
     }
 
-    // Función para agregar marcadores de propiedades
     function addMarkers(locations) {
-      locations.forEach(loc => {
+      markerCluster = new markerClusterer.MarkerClusterer({ map });
+
+      locations.forEach(function(loc) {
         var lat = parseFloat(loc.Latitud);
         var lng = parseFloat(loc.Longitud);
-
         if (isNaN(lat) || isNaN(lng)) {
-          console.warn(`Coordenadas inválidas: ${loc.Latitud}, ${loc.Longitud}`);
-          return; // Saltar esta propiedad
+          console.warn(`⚠️ Coordenadas inválidas: ${loc.Latitud}, ${loc.Longitud}`);
+          return;
         }
 
-        var iconUrl = loc['Tipo de transaccion'] === 'Venta' 
+        var iconUrl = (loc['Tipo de transaccion'] === 'Venta' || loc['Tipo de transaccion'] === 'venta') 
           ? 'https://maps.google.com/mapfiles/ms/icons/red-dot.png' 
           : 'https://maps.google.com/mapfiles/ms/icons/green-dot.png';
 
         var marker = new google.maps.Marker({
           position: { lat: lat, lng: lng },
-          icon: { url: iconUrl, size: new google.maps.Size(32, 32), anchor: new google.maps.Point(16, 32) }
+          icon: {
+            url: iconUrl,
+            size: new google.maps.Size(32, 32),
+            anchor: new google.maps.Point(16, 32)
+          }
         });
 
-        var infoWindow = new google.maps.InfoWindow({
-          content: `
-            <div style="font-family: Arial, sans-serif;">
-              <h3 style="margin: 0; color: #007BFF;">${loc.Título}</h3>
-              <p><strong>Dirección:</strong> ${loc.Dirección}</p>
-              <p><strong>Tipo de transacción:</strong> ${loc['Tipo de transaccion']}</p>
-              <p><strong>Precio:</strong> ${loc.Precio}</p>
-              <p><strong>Expensas:</strong> ${loc.Expensas}</p>
-              <p><strong>Ambientes:</strong> ${loc.Ambientes}</p>
-              <p><strong>Descripción:</strong> ${loc.Descripcion}</p>
-              <a href="${loc.Link}" target="_blank" style="color: #007BFF; text-decoration: none;">Ver más detalles</a>
-            </div>
-          `
+        var infoWindowContent = `
+          <div style="font-family: Arial, sans-serif;">
+            <h3 style="margin: 0; color: #007BFF;">${loc.Título}</h3>
+            <p><strong>Dirección:</strong> ${loc.Dirección}</p>
+            <p><strong>Tipo de transacción:</strong> ${loc['Tipo de transaccion']}</p>
+            <p><strong>Precio:</strong> ${loc.Precio}</p>
+            <p><strong>Expensas:</strong> ${loc.Expensas}</p>
+            <p><strong>Ambientes:</strong> ${loc.Ambientes}</p>
+            <p><strong>Descripción:</strong> ${loc.Descripcion}</p>
+            <a href="${loc.Link}" target="_blank" style="color: #007BFF; text-decoration: none;">Ver más detalles</a>
+          </div>
+        `;
+
+        marker.addListener("click", function() {
+          infoWindow.setContent(infoWindowContent);
+          infoWindow.open(map, marker);
         });
 
-        marker.addListener("click", () => infoWindow.open(map, marker));
-        markers.push(marker);
+        markers.push({ marker, transactionType: loc['Tipo de transaccion'] });
+        markerCluster.addMarker(marker);
       });
-
-      // Agrupar marcadores
-      new markerClusterer.MarkerClusterer({ map, markers });
     }
-
-    // Función para agregar polígonos de pavimento
-    function addPolygons(data) {
-      data.features.forEach(function(feature, index) {
-          var coordinates = feature.geometry.coordinates; // MultiPolygon coordinates
-          var properties = feature.properties; // { no_pav_tot, sindato_to, pav_tot }
-  
-          console.log(`Polígono ${index}:`, coordinates);
-  
-          coordinates.forEach((polygonData, polyIndex) => {
-              console.log(`Polígono ${polyIndex}:`, polygonData);
-  
-              // Ensure correct level of nesting
-              if (Array.isArray(polygonData) && Array.isArray(polygonData[0])) {
-                  polygonData = polygonData[0]; // Flatten if needed
-              }
-  
-              var polygonPaths = polygonData.map(coord => ({ lat: coord[1], lng: coord[0] }));
-              
-              if (polygonPaths.length > 0) {
-                  var polygon = new google.maps.Polygon({
-                      paths: polygonPaths,
-                      strokeColor: getColor(properties),
-                      strokeOpacity: 0.8,
-                      strokeWeight: 2,
-                      fillColor: getColor(properties),
-                      fillOpacity: 0.35
-                  });
-  
-                  polygon.setMap(map);
-  
-                  // InfoWindow for additional data
-                  var infoWindow = new google.maps.InfoWindow({
-                      content: `
-                          <div style="font-family: Arial, sans-serif;">
-                              <h3>Datos de Pavimento</h3>
-                              <p><strong>Pavimento:</strong> ${(properties.pav_tot * 100).toFixed(2)}%</p>
-                              <p><strong>Sin pavimento:</strong> ${(properties.no_pav_tot * 100).toFixed(2)}%</p>
-                              <p><strong>Sin datos:</strong> ${(properties.sindato_to * 100).toFixed(2)}%</p>
-                          </div>
-                      `
-                  });
-  
-                  // Show InfoWindow when polygon is clicked
-                  polygon.addListener('click', function(event) {
-                      infoWindow.setPosition(event.latLng);
-                      infoWindow.open(map);
-                  });
-              } else {
-                  console.error(`No se pudo construir el polígono ${polyIndex}, las coordenadas están vacías.`);
-              }
+    let i=0
+    function addLayers(data) {
+      ['15', '19', '24'].forEach(year => {
+        layers[`year_${year}`] = new google.maps.Data();
+        layers[`year_${year}`].setMap(year === '15' ? map : null);
+        no_pav_tot="no_pav_tot"
+        sindato_to="sindato_to"
+        if (i>0){
+            no_pav_tot=`no_pav_t_${i}`
+            sindato_to=`sindato__${i}`
+        }
+        data.features.forEach(feature => {
+          layers[`year_${year}`].addGeoJson({
+            type: "Feature",
+            geometry: feature.geometry,
+            properties: {
+              pavimen: feature.properties[`pav_tot_${year}`] || 0,
+              no_pav: feature.properties[no_pav_tot] || 0,
+              sindato: feature.properties[sindato_to] || 0
+            }
           });
+        });
+        i=i+1;
+        layers[`year_${year}`].setStyle(f => ({
+          fillColor: getColor(f.getProperty('pavimen'), f.getProperty('no_pav'), f.getProperty('sindato')),
+          strokeColor: getColor(f.getProperty('pavimen'), f.getProperty('no_pav'), f.getProperty('sindato')),
+          strokeWeight: 2,
+          fillOpacity: 0.35
+        }));
+
+        layers[`year_${year}`].addListener('click', event => showInfoWindow(event, year));
       });
-  }
-  function getColor(properties) {
-    if (properties.pav_tot > properties.no_pav_tot && properties.pav_tot > properties.sindato_to) {
-      return 'red'; // Más pavimento
-    } else if (properties.no_pav_tot > properties.pav_tot && properties.no_pav_tot > properties.sindato_to) {
-      return 'blue'; // Menos pavimento
-    } else {
-      return 'gray'; // Sin datos
     }
-  }
-    window.onload = initMap;
+
+    function toggleLayer(event) {
+      const selectedYear = event.target.value;
+      Object.keys(layers).forEach(year => layers[year].setMap(year === selectedYear ? map : null));
+    }
+
+    function showInfoWindow(event, year) {
+      infoWindow.setContent(`
+        <div style="font-family: Arial;">
+          <h3>Datos de Pavimento (${year})</h3>
+          <p><strong>Pavimento:</strong> ${(event.feature.getProperty('pavimen') * 100).toFixed(2)}%</p>
+          <p><strong>Sin pavimento:</strong> ${(event.feature.getProperty('no_pav') * 100).toFixed(2)}%</p>
+          <p><strong>Sin datos:</strong> ${(event.feature.getProperty('sindato') * 100).toFixed(2)}%</p>
+        </div>
+      `);
+      infoWindow.setPosition(event.latLng);
+      infoWindow.open(map);
+    }
+
+    function getColor(pavimen, no_pav, sindato) {
+      return pavimen > no_pav && pavimen > sindato ? 'red' :
+             no_pav > pavimen && no_pav > sindato ? 'blue' : 'gray';
+    }
+    function filterMarkers(type) {
+      markers.forEach(markerObj => {
+        if (type === "Todos" || markerObj.transactionType === type) {
+          markerObj.marker.setMap(map);
+        } else {
+          markerObj.marker.setMap(null);
+        }
+      });
+    }
+
+    function resetFilter() {
+      document.getElementById('filter').value = "Todos";
+      filterMarkers("Todos");
+    }
+
+    function searchAddress() {
+      const address = document.getElementById('search-box').value;
+      if (!address) return;
+      
+      const geocoder = new google.maps.Geocoder();
+      geocoder.geocode({ address: address }, (results, status) => {
+        if (status === 'OK') {
+          map.setCenter(results[0].geometry.location);
+          map.setZoom(14);
+        } else {
+          alert('No se pudo encontrar la dirección: ' + status);
+        }
+      });
+    }
   </script>
 </body>
 </html>
+
