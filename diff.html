@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mapa de Diferencias</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <style>
+        #map {
+            height: 600px;
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+    <h2>Mapa de Diferencias</h2>
+    <div id="map"></div>
+    <script>
+        var map = L.map('map').setView([-27.455184, -58.987847], 12);
+        
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+        
+        fetch('https://storage.googleapis.com/argenprop_departamentos/geo_data/Ejes_resumen_4326_diff.geojson')
+            .then(response => response.json())
+            .then(data => {
+                L.geoJSON(data, {
+                    style: feature => {
+                        let value = feature.properties["24_15_diff_no_pav"];
+                        let color = value > 0 ? 'red' : 'green';
+                        return { color: color, weight: 2 };
+                    },
+                    onEachFeature: (feature, layer) => {
+                        let props = feature.properties;
+                        let popupContent = `
+                            <strong>Link:</strong> ${props.LINK}<br>
+                            <strong>ID:</strong> ${props.id}<br>
+                            <strong>Diferencia No Pav (19-15):</strong> ${props["19_15_diff_no_pav"]}<br>
+                            <strong>Diferencia No Pav (24-15):</strong> ${props["24_15_diff_no_pav"]}<br>
+                            <strong>Diferencia Pav (19-15):</strong> ${props["19_15_diff_pavimen"]}<br>
+                            <strong>Diferencia Pav (24-15):</strong> ${props["24_15_diff_pavimen"]}<br>
+                            <strong>Diferencia Sin Datos (19-15):</strong> ${props["19_15_diff_sin_dat"]}<br>
+                            <strong>Diferencia Sin Datos (24-15):</strong> ${props["24_15_diff_sin_dat"]}
+                        `;
+                        layer.bindPopup(popupContent);
+                    }
+                }).addTo(map);
+            })
+            .catch(error => console.error('Error cargando el GeoJSON:', error));
+    </script>
+</body>
+</html>
