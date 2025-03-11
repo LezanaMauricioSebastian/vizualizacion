@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Mapa de Calles</title>
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAQayartArb6MwoMF9-sDROHeXZc-akVFU"></script>
+  <style>
+    #map { height: 600px; width: 100%; }
+    .layer-control {
+      position: absolute;
+      top: 20px; right: 20px;
+      background: white;
+      padding: 10px;
+      border: 1px solid #ccc;
+      z-index: 1000;
+    }
+    .legend {
+      position: absolute;
+      bottom: 20px; left: 20px;
+      background: white;
+      padding: 10px;
+      border: 1px solid #ccc;
+      z-index: 1000;
+    }
+    .legend div { margin: 5px 0; }
+    .color-box {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      margin-right: 5px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Mapa de Calles</h1>
+  <div id="map"></div>
+  <div class="layer-control">
+    <h3>Seleccionar Año</h3>
+    <label><input type="radio" name="year" value="2015" checked> 2015</label><br>
+    <label><input type="radio" name="year" value="2019"> 2019</label><br>
+    <label><input type="radio" name="year" value="2024"> 2024</label>
+  </div>
+  <div class="legend">
+    <h3>Leyenda de Colores</h3>
+    <div><span class="color-box" style="background: blue;"></span> Pavimentado</div>
+    <div><span class="color-box" style="background: red;"></span> No Pavimentado</div>
+  </div>
+  <script>
+    let map, layers = {};
+    const dataUrls = {
+      "2015": "https://storage.googleapis.com/argenprop_departamentos/geo_data/Calles_2015_RCIA.geojson",
+      "2019": "https://storage.googleapis.com/argenprop_departamentos/geo_data/Calles_2019_RCIA.geojson",
+      "2024": "https://storage.googleapis.com/argenprop_departamentos/geo_data/Calles_2024_RCIA.geojson"
+    };
+
+    function initMap() {
+      map = new google.maps.Map(document.getElementById('map'), {
+        zoom: 12,
+        center: { lat: -27.455184, lng: -58.987847 }
+      });
+      loadLayers();
+      document.querySelectorAll('input[name="year"]').forEach(input => 
+        input.addEventListener('change', toggleLayer)
+      );
+    }
+    infoWindow = new google.maps.InfoWindow({
+        content: "",
+        disableAutoPan: false
+      });
+    function loadLayers() {
+      Object.keys(dataUrls).forEach(year => {
+        fetch(dataUrls[year])
+          .then(res => {
+            if (!res.ok) throw new Error(`Error loading ${year} data: ${res.statusText}`);
+            return res.json();
+          })
+          .then(data => {
+            layers[year] = new google.maps.Data();
+            layers[year].addGeoJson(data);
+            layers[year].setStyle(feature => ({
+              strokeColor: getColor(feature.getProperty('surface')),
+              strokeWeight: 2
+            }));
+            layers[year].addListener('click', event => {
+                const surfaceType = event.feature.getProperty('surface');
+                const content = `<strong>Tipo de superficie:</strong> ${surfaceType || "Desconocido"}`;
+                infoWindow.setContent(content);
+                infoWindow.setPosition(event.latLng);
+                infoWindow.open(map);
+              });
+            layers[year].setMap(year === "2015" ? map : null); // Default to 2015
+          })
+          .catch(err => console.error(err));
+      });
+    }
+
+    function toggleLayer(event) {
+      const selectedYear = event.target.value;
+      Object.keys(layers).forEach(year => layers[year].setMap(year === selectedYear ? map : null));
+    }
+
+    function getColor(surfaceType) {
+        // Superficies pavimentadas
+        const pavedSurfaces = ["concrete", "cobblestone", "paved", "asphalt", "paving_stones"];
+        // Si la superficie está en la lista de pavimentadas, usar azul; de lo contrario, rojo
+        return pavedSurfaces.includes(surfaceType) ? "blue" : "red";
+      }
+
+    window.onload = initMap;
+  </script>
+</body>
+</html>
