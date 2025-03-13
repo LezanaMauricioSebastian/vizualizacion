@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mapa de Vegetación</title>
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAQayartArb6MwoMF9-sDROHeXZc-akVFU"></script>
+    <style>
+        #map {
+            height: 600px;
+            width: 100%;
+        }
+        .legend {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: white;
+            padding: 10px;
+            border: 1px solid #ccc;
+            z-index: 1000;
+        }
+        .color-box {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            margin-right: 5px;
+        }
+        #legend {
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            font-size: 14px;
+            box-shadow: 0px 0px 5px rgba(0, 0, 0, 0.3);
+        }
+        .legend-box {
+            display: inline-block;
+            width: 20px;
+            height: 10px;
+            margin-right: 5px;
+            border: 1px solid black;
+        }
+        
+    </style>
+</head>
+<body>
+    <h2>Mapa de Vegetación</h2>
+    <div id="map"></div>
+    <div id="legend">
+        <h3>Leyenda</h3>
+        <div><span class="legend-box" style="background-color: green;"></span> Más pasto que vegetación alta (en promedio)</div>
+        <div><span class="legend-box" style="background-color: yellow;"></span> Más vegetación alta que pasto (en promedio)</div>
+    </div>
+
+    <script>
+        let map, infoWindow;
+        const dataUrls = {
+            "2015": "https://storage.googleapis.com/argenprop_departamentos/geo_data/RForest_rcia_2015.geojson",
+            "2019": "https://storage.googleapis.com/argenprop_departamentos/geo_data/RForest_rcia_2019.geojson",
+            "2024": "https://storage.googleapis.com/argenprop_departamentos/geo_data/RForest_rcia_2024.geojson"
+        };
+    
+        let combinedData = [];
+    
+        function initMap() {
+            map = new google.maps.Map(document.getElementById('map'), {
+                zoom: 13,
+                center: { lat: -27.455184, lng: -58.987847 }
+            });
+            infoWindow = new google.maps.InfoWindow();
+            loadData();
+        }
+    
+        function processGeoJSON(data, year) {
+            data.features.forEach(feature => {
+                let link = feature.properties.LINK; // Identificador único
+                
+                // Buscar si ya existe la feature con ese LINK
+                let existingFeature = combinedData.find(f => f.properties.LINK === link);
+                
+                if (existingFeature) {
+                    // Si ya existe, agregamos los datos del año correspondiente sin sobrescribir los otros
+                    existingFeature.properties[`area_suelo_pasto_${year}`] = feature.properties.area_suelo_pasto || 0;
+                    existingFeature.properties[`area_veg_alta_${year}`] = feature.properties.area_veg_alta || 0;
+                    existingFeature.properties[`area_veg_baja_alta_${year}`] = feature.properties.area_veg_baja_alta || 1;
+                } else {
+                    // Si no existe, la agregamos y renombramos los valores actuales con el año
+                    let newFeature = { ...feature };
+                    newFeature.properties[`area_suelo_pasto_${year}`] = feature.properties.area_suelo_pasto || 0;
+                    newFeature.properties[`area_veg_alta_${year}`] = feature.properties.area_veg_alta || 0;
+                    newFeature.properties[`area_veg_baja_alta_${year}`] = feature.properties.area_veg_baja_alta || 1;
+                    
+                    combinedData.push(newFeature);
+                }
+            });
+        
+            console.log("combinedData después de agregar " + year + ":", combinedData);
+        }
+        
+    
+        function loadData() {
+            let promises = Object.keys(dataUrls).map(year =>
+                fetch(dataUrls[year])
+                    .then(response => response.json())
+                    .then(data => processGeoJSON(data, year))
+                    .catch(error => console.error(`Error cargando ${year}:`, error))
+            );
+    
+            Promise.all(promises).then(() => displayMap());
+        }
+    
+        function displayMap() {
+            const dataLayer = new google.maps.Data();
+            dataLayer.addGeoJson({ type: "FeatureCollection", features: combinedData });
+        
+            dataLayer.setStyle(feature => {
+                // Obtener valores de suelo pasto
+                const sueloPasto_2015 = feature.getProperty("area_suelo_pasto_2015") || 0;
+                const sueloPasto_2019 = feature.getProperty("area_suelo_pasto_2019") || 0;
+                const sueloPasto_2024 = feature.getProperty("area_suelo_pasto_2024") || 0;
+        
+                // Obtener valores de vegetación alta
+                const vegAlta_2015 = feature.getProperty("area_veg_alta_2015") || 0;
+                const vegAlta_2019 = feature.getProperty("area_veg_alta_2019") || 0;
+                const vegAlta_2024 = feature.getProperty("area_veg_alta_2024") || 0;
+        
+                // Calcular promedios
+                const promedio_suelo_pasto = (sueloPasto_2015 + sueloPasto_2019 + sueloPasto_2024) / 3;
+                const promedio_veg_alta = (vegAlta_2015 + vegAlta_2019 + vegAlta_2024) / 3;
+        
+                // Determinar color basado en la comparación
+                let color = promedio_suelo_pasto > promedio_veg_alta ? "green" : "yellow";
+        
+                return { strokeColor: color, strokeWeight: 2, fillColor: color, fillOpacity: 0.5 };
+            });
+        
+            dataLayer.addListener("click", event => showInfoWindow(event));
+            dataLayer.setMap(map);
+        
+            // Agregar leyenda al mapa
+            map.controls[google.maps.ControlPosition.LEFT_BOTTOM].push(document.getElementById("legend"));
+        }
+        
+        
+    
+        function showInfoWindow(event) {
+            const feature = event.feature;
+        
+            let content = `<div style='font-family: Arial;'><h3>Información de Vegetación</h3>`;
+            
+            // Mostrar los datos para cada año
+            Object.keys(dataUrls).forEach(year => {
+                const vegBajaAlta = feature.getProperty(`area_veg_baja_alta_${year}`) || 1;
+                const sueloPasto = (feature.getProperty(`area_suelo_pasto_${year}`)/vegBajaAlta )*100|| 0;
+                const vegAlta = (feature.getProperty(`area_veg_alta_${year}`)/vegBajaAlta)*100 || 0;
+                
+                const proporcion = (sueloPasto + vegAlta) / vegBajaAlta;
+    
+                content += `
+                    <hr><strong>📅 Año:</strong> ${year}<br>
+                    🌱 <strong>Área suelo pasto:</strong> ${sueloPasto.toFixed(2)}<br>
+                    🌳 <strong>Área vegetación alta:</strong> ${vegAlta.toFixed(2)}<br>
+        
+                `;
+            });
+        
+            content += `</div>`;
+            infoWindow.setContent(content);
+            infoWindow.setPosition(event.latLng);
+            infoWindow.open(map);
+        }
+    
+        window.onload = initMap;
+    </script>
+    
+</body>
+</html>
