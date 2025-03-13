@@ -85,13 +85,14 @@
                     existingFeature.properties[`area_suelo_pasto_${year}`] = feature.properties.area_suelo_pasto || 0;
                     existingFeature.properties[`area_veg_alta_${year}`] = feature.properties.area_veg_alta || 0;
                     existingFeature.properties[`area_veg_baja_alta_${year}`] = feature.properties.area_veg_baja_alta || 1;
+                    existingFeature.properties[`area_total_${year}`]=(feature.properties.area_veg_baja_alta+feature.properties.area_otros+feature.properties.area_laguna+feature.properties.area_calle)
                 } else {
                     // Si no existe, la agregamos y renombramos los valores actuales con el año
                     let newFeature = { ...feature };
                     newFeature.properties[`area_suelo_pasto_${year}`] = feature.properties.area_suelo_pasto || 0;
                     newFeature.properties[`area_veg_alta_${year}`] = feature.properties.area_veg_alta || 0;
                     newFeature.properties[`area_veg_baja_alta_${year}`] = feature.properties.area_veg_baja_alta || 1;
-                    
+                    newFeature.properties[`area_total_${year}`]=(feature.properties.area_veg_baja_alta+feature.properties.area_otros+feature.properties.area_laguna+feature.properties.area_calle)
                     combinedData.push(newFeature);
                 }
             });
@@ -153,16 +154,17 @@
             // Mostrar los datos para cada año
             Object.keys(dataUrls).forEach(year => {
                 const vegBajaAlta = feature.getProperty(`area_veg_baja_alta_${year}`) || 1;
-                const sueloPasto = (feature.getProperty(`area_suelo_pasto_${year}`)/vegBajaAlta )*100|| 0;
-                const vegAlta = (feature.getProperty(`area_veg_alta_${year}`)/vegBajaAlta)*100 || 0;
+                const area_total = feature.getProperty(`area_total_${year}`)
+                const sueloPasto = (feature.getProperty(`area_suelo_pasto_${year}`)/area_total )*100|| 0;
+                const vegAlta = (feature.getProperty(`area_veg_alta_${year}`)/area_total)*100 || 0;
+                const otros = ((area_total-vegBajaAlta)/area_total )*100 
                 
-                const proporcion = (sueloPasto + vegAlta) / vegBajaAlta;
     
                 content += `
                     <hr><strong>📅 Año:</strong> ${year}<br>
-                    🌱 <strong>Área suelo pasto:</strong> ${sueloPasto.toFixed(2)}<br>
-                    🌳 <strong>Área vegetación alta:</strong> ${vegAlta.toFixed(2)}<br>
-        
+                    🌱 <strong>Área suelo pasto:</strong> ${sueloPasto.toFixed(2)}%<br>
+                    🌳 <strong>Área vegetación alta:</strong> ${vegAlta.toFixed(2)}%<br>
+                    🌎 <strong>Área Otros:</strong> ${otros.toFixed(2)}%<br>
                 `;
             });
         
